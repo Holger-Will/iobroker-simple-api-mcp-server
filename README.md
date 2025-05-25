@@ -29,10 +29,10 @@ Add the following to your MCP client configuration (e.g., Claude Desktop, Cursor
     "command": "npx",
     "args": [
       "iobroker-simple-api-mcp-server",
-      "--host", "http://localhost:8087",
-      "--authType", "query",
-      "--user", "admin",
-      "--pass", "secret"
+      "--host=http://localhost:8087",
+      "--authType=query",
+      "--user=admin",
+      "--pass=secret"
     ]
   }
 }
