@@ -1,12 +1,16 @@
 import { z } from "zod";
+import {appendFileSync } from "node:fs";
 
+/*  function log(msg){
+appendFileSync( '/home/holger/errorlog', msg + '\n');
+}  */
 if (typeof fetch === "undefined") {
     global.fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 }
 // Helper function to handle HTTP requests with authentication
 async function call({ host, path, method = "GET", body, auth }) {
     const url = new URL(path, host);
-
+//log("call: " + url.toString() + " method: " + method + " body: " + JSON.stringify(body) + " auth: " + JSON.stringify(auth));
     const headers = {};
     let fetchOptions = { method, headers };
 
@@ -45,18 +49,75 @@ async function call({ host, path, method = "GET", body, auth }) {
 
 export function registerTools(server, host, auth) {
     // Get the plain value of a state
+
+server.tool(
+  "api-docs",
+  `this functions returns a general overview of how to use this api. if you the AI is new to this API, call this function to find your way around here
+  `,
+  {},
+   async (args) => {
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `
+IMPORTANT: call getState(0_userdata.0.isams_memory) to get the current memory of the AI. 
+IMPORTANT: if getState does not exist, ask the user to create it for you. USE setState(0_userdata.0.isams_memory) to remember things you learn about the users system and how to controll it
+
+
+getStates and getObjects do not work with starting "*"
+If you find a state or object during conversation that belongs to a certain function or room, you can remember it by using setObject and storing the id in the corresponding enum object. 
+You can use setObject to store arbitrary data you need to remember about these objects in the objects common.custom.isams.data field; if it does not exist you can add it.
+Use getEnums to find available rooms and functions.
+If you find, for example, objects in the lighting function, chances are you will find more possible lights in the same adapter. Let's say you find that hue.0.kitchenlight belongs to the light or lighting enum—you can and should look at getObjects(hue.0.*) to find all objects in the hue adapter to determine if their role indicates it's a light.
+If so, you can add the object to the lighting enum by using setObject() and then use getEnums to find the enum again.
+Fetch and read: https://raw.githubusercontent.com/ioBroker/ioBroker.docs/refs/heads/master/docs/en/dev/objectsschema.md
+
+IMPORTANT: When you want to switch a device (e.g., a Zigbee or Hue light) on or off, do not set the device or group object directly. Instead, always use getObjects(<deviceId>.*, "state") to retrieve all related states. Look for a state with the role "switch" or "switch.light" (for example, <deviceId>.state, <deviceId>.on, or similar). The main switch state may be named .state, .on, or something adapter-specific. Only this state will reliably switch the device on or off. Do not set the device object itself.
+
+ADAPTER NOTE: For Zigbee, the main switch is usually <deviceId>.state. For Hue, it is usually <deviceId>.on. Always check both the role (should be "switch" or "switch.light") and the state name/id (should be .state, .on, or similar). Do not assume the state name—always enumerate states and check their roles and names.
+
+TIP: When using getObjects, always restrict the call as much as possible by using the type parameter in addition to the pattern. For example, type="device", type="channel", or type="folder" usually return fewer objects than type="state". This not only improves performance, but also avoids hitting the tokenization limit and prevents call loops.
+
+TIP: You can also use patterns like bmw.*.*Level* to find all states with "Level" in their ID, regardless of hierarchy. This is especially useful for discovering values such as chargingLevelPercent for electric vehicles, or any other deeply nested state containing a specific keyword.
+
+BEST PRACTICE: To robustly control devices, always:
+1. Use getEnums to find available rooms/functions and their assigned objects.
+2. Use getObjects(<deviceId>.*, "state") to enumerate all substates for a device.
+3. Identify the main switch state by checking for role "switch" or "switch.light" and a name/id like .state, .on, or similar.
+4. Use setState on the identified state to control the device.
+5. Never guess the state name—always check both role and id.
+6. For group control, use the group state (e.g., zigbee.0.group_8.state) if available, following the same pattern.
+
+FINDING ADAPTERS: Room and function memberships (enums) can be incomplete or outdated. To discover which adapters are in use for devices (e.g., lights), use getEnums to list all enums for functions and rooms. Examine the member IDs in these enums to collect adapter prefixes (e.g., zigbee.0.*, hue.0.*, homekit-controller.0.*). Use these prefixes to enumerate all devices and states in those adapters with getObjects, regardless of enum completeness. This ensures robust device discovery even if enum assignments are missing or stale.
+
+IMPORTANT: To find arbitrary objects (states, devices, etc.) by substring or keyword in their IDs, you MUST NOT use a leading wildcard (e.g., *.battery*). Instead, iterate over all possible starting characters (a-z, 0-9, etc.) and use patterns like a*.*battery*, b*.*battery*, ..., z*.*battery*. This is the only robust and performant way to search for objects containing a substring anywhere in their ID in ioBroker. This approach is CRITICAL for reliable discovery and is a best practice for all object searches!
+
+Example strategy:
+1. Identify the substring/keyword you want to find (e.g., "Battery").
+2. For each starting character (a-z, 0-9), use a pattern like a*.*Battery*, b*.*Battery*, ..., z*.*Battery*.
+3. For each pattern, call getObjects(pattern, type) to retrieve matching objects.
+4. Aggregate results from all patterns for a complete list.
+
+NEVER use a pattern starting with * (e.g., *.battery*)—it will not work and is not supported by ioBroker.
+
+This approach ensures adapter-agnostic, context-aware device control and avoids common pitfalls.
+                        `,
+                    },
+                ],
+            };
+        }
+);
     server.tool(
         "getPlainValue",
-        {
-            stateID: z.string().describe("The ID of the state to retrieve the plain value for."),
-        },
-        {
-            description: `This function retrieves the plain value of a specific ioBroker state.
+        `This function retrieves the plain value of a specific ioBroker state.
 
 Parameters:
   - stateID (string): The ID of the state to retrieve.
 
 The function returns the plain value of the specified state.`,
+        {
+            stateID: z.string().describe("The ID of the state to retrieve the plain value for."),
         },
         async (args) => {
             const response = await call({
@@ -83,16 +144,14 @@ The function returns the plain value of the specified state.`,
     // Get the value and additional information of a state
     server.tool(
         "getState",
-        {
-            stateID: z.string().describe("The ID of the state to retrieve."),
-        },
-        {
-            description: `This function retrieves the value and additional information of a specific ioBroker state.
+        `This function retrieves the value and additional information of a specific ioBroker state.
 
 Parameters:
   - stateID (string): The ID of the state to retrieve.
 
 The function returns the value and additional information of the specified state in JSON format.`,
+        {
+            stateID: z.string().describe("The ID of the state to retrieve."),
         },
         async (args) => {
             const response = await call({
@@ -108,8 +167,8 @@ The function returns the value and additional information of the specified state
             return {
                 content: [
                     {
-                        type: "json",
-                        json: stateInfo,
+                        type: "text",
+                        text: JSON.stringify(stateInfo),
                     },
                 ],
             };
@@ -119,18 +178,16 @@ The function returns the value and additional information of the specified state
     // Set the value of a state
     server.tool(
         "setState",
-        {
-            stateID: z.string().describe("The ID of the state to set."),
-            value: z.union([z.string(), z.number(), z.boolean()]).describe("The value to set for the state."),
-        },
-        {
-            description: `This function sets the value of a specific ioBroker state.
+        `This function sets the value of a specific ioBroker state.
 
 Parameters:
   - stateID (string): The ID of the state to set.
   - value (string | number | boolean): The value to set for the state.
 
 The function returns true if the value was successfully set.`,
+        {
+            stateID: z.string().describe("The ID of the state to set."),
+            value: z.union([z.string(), z.number(), z.boolean()]).describe("The value to set for the state."),
         },
         async (args) => {
             const response = await call({
@@ -157,16 +214,14 @@ The function returns true if the value was successfully set.`,
     // Toggle the value of a state
     server.tool(
         "toggleState",
-        {
-            stateID: z.string().describe("The ID of the state to toggle."),
-        },
-        {
-            description: `This function toggles the value of a specific ioBroker state (e.g., switches between true and false).
+        `This function toggles the value of a specific ioBroker state (e.g., switches between true and false).
 
 Parameters:
   - stateID (string): The ID of the state to toggle.
 
 The function returns true if the state was successfully toggled.`,
+        {
+            stateID: z.string().describe("The ID of the state to toggle."),
         },
         async (args) => {
             const response = await call({
@@ -193,16 +248,14 @@ The function returns true if the state was successfully toggled.`,
     // Get the values and additional information for multiple states
     server.tool(
         "getBulkStates",
-        {
-            stateIDs: z.string().describe("A comma-separated list of state IDs to retrieve."),
-        },
-        {
-            description: `This function retrieves the values and additional information for multiple ioBroker states.
+        `This function retrieves the values and additional information for multiple ioBroker states.
 
 Parameters:
   - stateIDs (string): A comma-separated list of state IDs to retrieve.
 
 The function returns the values and additional information for the specified states in JSON format.`,
+        {
+            stateIDs: z.string().describe("A comma-separated list of state IDs to retrieve."),
         },
         async (args) => {
             const response = await call({
@@ -218,8 +271,8 @@ The function returns the values and additional information for the specified sta
             return {
                 content: [
                     {
-                        type: "json",
-                        json: bulkStateInfo,
+                        type: "text",
+                        text: JSON.stringify(bulkStateInfo),
                     },
                 ],
             };
@@ -229,18 +282,16 @@ The function returns the values and additional information for the specified sta
     // Set the values of multiple states
     server.tool(
         "setBulkStates",
-        {
-            states: z
-                .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-                .describe("A JSON object where the keys are state IDs and the values are the values to set."),
-        },
-        {
-            description: `This function sets the values of multiple ioBroker states.
+        `This function sets the values of multiple ioBroker states.
 
 Parameters:
   - states (object): A JSON object where the keys are state IDs and the values are the values to set.
 
 The function returns true if the values were successfully set.`,
+        {
+            states: z
+                .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                .describe("A JSON object where the keys are state IDs and the values are the values to set."),
         },
         async (args) => {
             const response = await call({
@@ -269,16 +320,14 @@ The function returns true if the values were successfully set.`,
     // Get the values and additional information for states matching a pattern
     server.tool(
         "getStates",
-        {
-            pattern: z.string().describe("A pattern to match state IDs (e.g., *.state)."),
-        },
-        {
-            description: `This function retrieves the values and additional information for ioBroker states that match a specific pattern.
+        `This function retrieves the values and additional information for ioBroker states that match a specific pattern.
 
 Parameters:
-  - pattern (string): A pattern to match state IDs (e.g., *.state).
+  - pattern (string): A pattern to match state IDs (e.g., hue.0.* or hue.*.on).
 
-The function returns the values and additional information for the matching states in JSON format.`,
+The function returns the current values for the matching states in JSON format. if you need additinali nfo for this state use getObject(id)`,
+        {
+            pattern: z.string().describe("A pattern to match state IDs (e.g., hue.*)."),
         },
         async (args) => {
             const response = await call({
@@ -294,8 +343,8 @@ The function returns the values and additional information for the matching stat
             return {
                 content: [
                     {
-                        type: "json",
-                        json: states,
+                        type: "text",
+                        text: JSON.stringify(states),
                     },
                 ],
             };
@@ -305,14 +354,12 @@ The function returns the values and additional information for the matching stat
     // Get all enums
     server.tool(
         "getEnums",
-        {},
-        {
-            description: `This function retrieves all enums from the ioBroker system.
+        `This function retrieves all enums from the ioBroker system, including categories such as rooms and functions (e.g., lighting, heating, power consumption, shutters etc.).
 
-The function uses the pattern "enum.*" and ensures that only objects of type "enum" are returned.
+Use this tool to discover available rooms, functions, and their assigned objects and states.
 
 The function returns all enums in JSON format.`,
-        },
+        {},
         async () => {
             const response = await call({
                 host,
@@ -327,8 +374,8 @@ The function returns all enums in JSON format.`,
             return {
                 content: [
                     {
-                        type: "json",
-                        json: enums,
+                        type: "text",
+                        text: JSON.stringify(enums),
                     },
                 ],
             };
@@ -338,36 +385,22 @@ The function returns all enums in JSON format.`,
     // Get the objects matching a pattern and optional type
     server.tool(
         "getObjects",
-        {
-            pattern: z.string().describe("A pattern to match object IDs (e.g., *.object)."),
-            type: z
-                .string()
-                .optional()
-                .describe(
-                    `An optional type to filter objects. Available types:
-  - state: Represents a single value or property.
-  - channel: Groups related states together.
-  - device: Represents a physical or virtual device.
-  - enum: Represents a category or group of objects.
-  - adapter: Represents an ioBroker adapter instance.
-  - instance: Represents a specific instance of an adapter.
-  - host: Represents the ioBroker host system.
-  - meta: Represents metadata, such as files or auxiliary data.
-  - config: Represents configuration data.
-  - script: Represents a script created in ioBroker.
-  - user: Represents a user in the ioBroker system.
-  - group: Represents a group of users in the ioBroker system.`,
-                ),
-        },
-        {
-            description: `This function retrieves ioBroker objects that match a specific pattern and optionally filters them by type.
+        `This function retrieves ioBroker objects that match a specific pattern and optionally filters them by type.
 
 Parameters:
-  - pattern (string): A pattern to match object IDs (e.g., *.object).
+  - pattern (string): A pattern to match object IDs (e.g., hue.0.* or hue.*.on ).
   - type (string, optional): An optional type to filter objects. Available types include:
     - state, channel, device, enum, adapter, instance, host, meta, config, script, user, group.
 
 The function returns the objects matching the pattern and type in JSON format.`,
+        {
+            pattern: z.string().describe("A pattern to match object IDs (e.g., hue.*.on or hue.0.*)."),
+            type: z
+                .string()
+                .optional()
+                .describe(
+                    `An optional type to filter objects. Available types:\n  - state: Represents a single value or property.\n  - channel: Groups related states together.\n  - device: Represents a physical or virtual device.\n  - enum: Represents a category or group of objects.\n  - adapter: Represents an ioBroker adapter instance.\n  - instance: Represents a specific instance of an adapter.\n  - host: Represents the ioBroker host system.\n  - meta: Represents metadata, such as files or auxiliary data.\n  - config: Represents configuration data.\n  - script: Represents a script created in ioBroker.\n  - user: Represents a user in the ioBroker system.\n  - group: Represents a group of users in the ioBroker system.`,
+                ),
         },
         async (args) => {
             // Build the query string with optional type
@@ -393,31 +426,25 @@ The function returns the objects matching the pattern and type in JSON format.`,
             return {
                 content: [
                     {
-                        type: "json",
-                        json: objects,
+                        type: "text",
+                        text: JSON.stringify(objects),
                     },
                 ],
             };
         },
     );
 
-    // Search for data points (state IDs) matching a pattern
+    // Search for data points (state IDs) matching a pattern (History adapter only)
     server.tool(
-        "search",
-        {
-            pattern: z.string().describe("A pattern to match data point IDs (e.g., system.adapter.admin.0*)."),
-        },
-        {
-            description: `This function retrieves a list of data points (state IDs) that match a specific pattern.
-
-Behavior:
-  - If a data source (e.g., History, SQL) is configured, only data points known to the data source are listed.
-  - If the option 'List all data points' is enabled or no data source is configured, all data points are listed.
+        "getHistoryStates",
+        `List states configured for historical logging in the History adapter (not a general state search)
 
 Parameters:
-  - pattern (string): A pattern to match data point IDs (e.g., system.adapter.admin.0*).
+  - pattern (string): Pattern to match historically logged state IDs. This function only returns states that are configured in the History adapter for data collection, not all available states in the system.
 
 The function returns the matching data points in JSON format.`,
+        {
+            pattern: z.string().describe("Pattern to match historically logged state IDs. This function only returns states that are configured in the History adapter for data collection, not all available states in the system."),
         },
         async (args) => {
             // Build the query string
@@ -436,48 +463,25 @@ The function returns the matching data points in JSON format.`,
             return {
                 content: [
                     {
-                        type: "json",
-                        json: searchResults,
+                        type: "text",
+                        text: JSON.stringify(searchResults),
                     },
                 ],
             };
         },
     );
 
+    // Query historical or current data for specified data points (History/SQL adapter)
     server.tool(
-        "query",
-        {
-            stateIDs: z
-                .string()
-                .describe(
-                    "A comma-separated list of state IDs to query (e.g., system.host.iobroker-dev.load,system.host.iobroker-dev.memHeapUsed).",
-                ),
-            dateFrom: z
-                .string()
-                .optional()
-                .describe(
-                    "The start date/time for the query. Can be an ISO 8601 date (e.g., 2019-06-08T01:00:00.000Z) or a relative time pattern (e.g., -1h, today).",
-                ),
-            dateTo: z
-                .string()
-                .optional()
-                .describe(
-                    "The end date/time for the query. Can be an ISO 8601 date (e.g., 2019-06-08T01:00:10.000Z) or a relative time pattern (e.g., now, today).",
-                ),
-            noHistory: z
-                .boolean()
-                .optional()
-                .describe("If true, retrieves only the current value of the data points instead of historical data."),
-        },
-        {
-            description: `This function retrieves historical or current data for specified data points (state IDs) over a given time period or based on relative time patterns.
+        "queryHistory",
+        `Query historical or current data for specified data points (state IDs) over a given time period or based on relative time patterns. Only states configured for logging in the History/SQL adapter will return historical data. For all others, only the current value is available.
 
 Behavior:
   - If a data source (e.g., History, SQL) is configured, historical data for the specified period is retrieved.
   - If no data source is configured or the 'noHistory' parameter is set to true, only the current value of the data points is retrieved.
 
 Parameters:
-  - stateIDs (string): A comma-separated list of state IDs to query.
+  - stateIDs (string): A comma-separated list of state IDs to query. Only states configured for logging in the History/SQL adapter will return historical data.
   - dateFrom (string, optional): The start date/time for the query (ISO 8601 or relative time pattern).
   - dateTo (string, optional): The end date/time for the query (ISO 8601 or relative time pattern).
   - noHistory (boolean, optional): If true, retrieves only the current value of the data points.
@@ -501,26 +505,52 @@ Relative Time Patterns:
   - -Ns: N seconds ago.
 
 Note:
-  - You can use the 'search' tool to find relevant state IDs to use in this query.
+  - You can use the 'getHistoryStates' tool to find relevant state IDs to use in this query.
 
 The function returns the matching data points and their values in JSON format.`,
+        {
+            stateIDs: z
+                .string()
+                .describe(
+                    "A comma-separated list of state IDs to query (e.g., system.host.iobroker-dev.load,system.host.iobroker-dev.memHeapUsed). Only states configured for logging in the History/SQL adapter will return historical data.",
+                ),
+            dateFrom: z
+                .string()
+                .optional()
+                .describe(
+                    "The start date/time for the query. Can be an ISO 8601 date (e.g., 2019-06-08T01:00:00.000Z) or a relative time pattern (e.g., -1h, today).",
+                ),
+            dateTo: z
+                .string()
+                .optional()
+                .describe(
+                    "The end date/time for the query. Can be an ISO 8601 date (e.g., 2019-06-08T01:00:10.000Z) or a relative time pattern (e.g., now, today).",
+                ),
+            noHistory: z
+                .boolean()
+                .optional()
+                .describe("If true, retrieves only the current value of the data points instead of historical data."),
         },
         async (args) => {
-            // Build the query string with optional parameters
-            let query = `stateIDs=${encodeURIComponent(args.stateIDs)}`;
+            // Build the path with stateIDs as part of the path, not as a query parameter
+            let path = `/query/${encodeURIComponent(args.stateIDs)}`;
+            let query = "";
             if (args.dateFrom) {
-                query += `&dateFrom=${encodeURIComponent(args.dateFrom)}`;
+                query += `dateFrom=${encodeURIComponent(args.dateFrom)}`;
             }
             if (args.dateTo) {
-                query += `&dateTo=${encodeURIComponent(args.dateTo)}`;
+                query += (query ? "&" : "") + `dateTo=${encodeURIComponent(args.dateTo)}`;
             }
             if (args.noHistory) {
-                query += `&noHistory=true`;
+                query += (query ? "&" : "") + `noHistory=true`;
+            }
+            if (query) {
+                path += `?${query}`;
             }
 
             const response = await call({
                 host,
-                path: `/query?${query}`,
+                path,
                 auth,
             });
             if (!response.ok) {
@@ -531,8 +561,8 @@ The function returns the matching data points and their values in JSON format.`,
             return {
                 content: [
                     {
-                        type: "json",
-                        json: queryResults,
+                        type: "text",
+                        text: JSON.stringify(queryResults),
                     },
                 ],
             };

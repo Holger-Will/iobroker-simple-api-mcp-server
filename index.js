@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { registerTools } from "@modelcontextprotocol/sdk/server/tools.js";
+import { registerTools } from "./tools/tools.js";
+import {appendFileSync } from "node:fs";
 
+/* function log(msg){
+appendFileSync( '/home/holger/errorlog', msg + '\n')
+} */
 // Helper to parse CLI args
 function getArg(name) {
   const prefix = `--${name}=`;
@@ -25,23 +29,25 @@ if (authType === "bearer" && token) {
   auth = undefined; // No auth
 }
 
-const host = getArg("host") || process.env.IOB_HOST || "http://localhost:8087";
+const host = getArg("host") || process.env.IOB_HOST || "http://localhost:8082";
 
 const server = new McpServer({
   name: "iobroker-simple-api-mcp-server",
   version: "1.0.0",
   capabilities: {
+    logging: {},
     resources: {},
-    tools: {},
+    tools: {}
   },
 });
+//fs.appendFile('/home/holger/errorlog', host + '\n' + auth+ '\n');
 
 registerTools(server, host, auth);
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("ioBroker MCP Server is running...");
+ //log("MCP server started with host: " + host + " and auth: " + JSON.stringify(auth));
 }
 
 main().catch((error) => {

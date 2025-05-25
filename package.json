@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "an MCP-Server that provides a bridge to iobroker using the simple api adapter",
   "main": "index.js",
+  "type": "module",
   "bin":{
-    "iobroker-simple-api-mcp-server": "./index.js"
+    "iobroker-simple-api-mcp-server": "./index.js",
+    "isams": "./index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
