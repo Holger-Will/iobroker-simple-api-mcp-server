@@ -1,0 +1,32 @@
+{
+  "name": "iobroker-simple-api-mcp-server",
+  "version": "1.0.0",
+  "description": "an MCP-Server that provides a bridge to iobroker using the simple api adapter",
+  "main": "index.js",
+  "bin":{
+    "iobroker-simple-api-mcp-server": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Holger-Will/iobroker-simple-api-mcp-server.git"
+  },
+  "keywords": [
+    "mcp",
+    "iobroker",
+    "ai",
+    "agent"
+  ],
+  "author": "Holger Will",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Holger-Will/iobroker-simple-api-mcp-server/issues"
+  },
+  "homepage": "https://github.com/Holger-Will/iobroker-simple-api-mcp-server#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.25.28"
+  }
+}
